@@ -1,7 +1,12 @@
+\nonstopmode
+\documentclass[10pt, a4paper]{article}
+%\usepackage{subfig}
 
-\documentclass[paper=a4,fontsize=11pt]{scrartcl}	 			% KOMA-article class
-\usepackage[utf8]{inputenc}
-\usepackage[spanish]{babel}			
+\parindent=20pt
+\parskip=8pt
+\usepackage[width=15.5cm, left=3cm, top=2.5cm, height= 24.5cm]{geometry}
+\usepackage[spanish]{babel}
+\usepackage[utf8]{inputenc}			
 %\usepackage[english]{babel}								% English language/hyphenation
 %\usepackage[protrusion=true,expansion=true]{microtype}		% Better typography
 \usepackage{amsmath,amsfonts,amsthm}					% Math packages
@@ -13,10 +18,123 @@
 \usepackage{wrapfig}									% Wrap text along figures
 \frenchspacing									% Better looking spacings after periods
 \pagestyle{empty}								% No pagenumbers/headers/footers
-\usepackage{bbding}									% Symbols
+\usepackage{bbding}	
+% Acomodo fancyhdr.
+\pagestyle{fancy}
+\thispagestyle{fancy}
+\addtolength{\headheight}{1pt}
+\renewcommand{\footrulewidth}{0.4pt}
+\renewcommand{\thesubsubsection}{\thesubsection.\alph{subsubsection}}
+
+
+\author{Seguridad Android.}
+\date{}								% Symbols
 \begin{document}
 
-En el siguiente trabajo práctico, debimos analizar la aplicación Android $BadBrowser$ con el fin de hallar sus vulnerabilidades . 
-Como trabajo final para aprobar el curso se entregará a los alumnos una aplicación Android. Esta aplicación contiene vulnerabilidades del tipo de las vistas en el curso. Se trata de un navegador que permite sincronizar el historial de un usuario registrado con un servidor externo. Además de la aplicación Android, van a tener los fuentes del servidor externo así lo pueden correr en sus redes utilizando python.
+\thispagestyle{caratula}
+
+\begin{center}
+
+\vspace{2cm}
+
+Departamento de Computación,\\
+$22^{\circ}$ Escuela de Verano de Ciencias Informáticas,\\
+Universidad Nacional de Río Cuarto
+
+\vspace{4cm}
+
+\begin{Huge}
+Seguridad y Protección de datos en aplicaciones Android\end{Huge}
+
+\vspace{0.5cm}
+
+\begin{huge}
+Trabajo Práctico Final
+\end{huge}
+
+\vspace{1cm}
+
+Febrero de 2015
+
+\vspace{10cm}
+
+
+\vspace{1cm}
+
+\begin{tabular}{|c|c|c|}
+\hline
+Apellido y Nombre & E-mail\\
+\hline
+Izcovich, Sabrina      & sizcovich@gmail.com\\
+Vita, Sebastián        & sebastian\_vita@yahoo.com.ar\\
+\hline
+\end{tabular}
+
+\end{center}
+
+\newpage
+
+\section{Introducción}
+En el siguiente trabajo práctico, debimos analizar la aplicación Android $BadBrowser$ con el fin de hallar sus vulnerabilidades. La misma se trata de un navegador que permite sincronizar el historial de un usuario registrado con un servidor externo. Dicha aplicación contiene vulnerabilidades del tipo de las vistas en el curso, que pueden ser:
+\begin{itemize}
+\item \textit{Controles pobres en el servidor.}
+\item \textit{Almacenamiento inseguro de datos privados.}
+\item \textit{Transmisión insegura.}
+\item \textit{Autenticación/autorización pobre.}
+\item \textit{Caching y Logging: Fuga de datos.}
+\item \textit{Mal uso de criptografía.}
+\item \textit{Inyección de código en el cliente.}
+\item \textit{Componentes exportados: Inputs maliciosos.}
+\item \textit{Componentes exportados: Intents implícitos.}
+\item \textit{Manejo inapropiado de sesiones.}
+\item \textit{Protección del APK.}
+\end{itemize}
+
+Con el fin de hallarlas, debimos realizar un análisis estático y uno dinámico de la aplicación, por lo que debimos decompilarla para acceder a su código fuente. Para una correcta experimentación, se nos proveyó de los fuentes del servidor externo para que pudiera ser corrido utilizando python.
+
+\newpage
+\section{Análisis}
+
+\subsection{Manifest}
+
+En primer lugar, decidimos analizar los permisos declarados en el $Manifest$. Para ello, descargamos la última actualización de $android-apktool$\footnote{https://code.google.com/p/android-apktool/} (v2.0.0RC4) dentro de la máquina virtual provista por la cátedra.
+
+En el análisis, nos encontramos con los siguientes detalles:
+\begin{itemize}
+\item $<permission android:name="ar.sadosky.badbrowser.permission.SyncBrowser"/>$ indica que el $SyncBrowser$ es público.
+\item $<permission android:name="ar.sadosky.badbrowser.permission.WRITE" android:protectionLevel="signature"/>$ indica que el nivel de protección es de tipo ``signature'', luego, que utiliza el mismo que para las aplicaciones de la misma firma. **chequear esto
+\item $<uses-permission android:name="android.permission.READ\_PHONE\_STATE"/>$ es un permiso correcto para el uso que se le quiere dar a la aplicación mobile.
+\item $<data android:scheme="javascript"/>$ nos llamó la atención dado que implica que cualquier link con javascript puede ser ejecutado, hecho que no debería ocurrir.
+\end{itemize}
+
+Consideramos que el resto de las configuraciones están bien adaptadas a los fines de la aplicación y no presentan relevancia alguna, por lo que decidimos no mencionarlas detalladamente.
+
+\subsection{Browser Server}
+Luego, procedimos analizando el $browser_server.py$. Las fallas encontradas fueron las siguientes:
+
+\begin{itemize}
+
+\item \textbf{Vulnerabilidad Remota:} Al observar \texit{def encrypt(self,value)} y \texit{def decrypt(self,value)}, podemos determinar que hay una vulnerabilidad de cipher de tipo `CBC mode'' cuando se inicializa $AES$ pues los vectores de inicialización están hardcodeados (string de 0's) en vez de ser random. Luego, cualquiera puede desencriptar y encriptar.\footnote{http://crypto.stackexchange.com/a/2579}
+
+\item \textbf{Vulnerabilidad Remota:} El sistema mantiene soporte para un único usuario en la base de datos. Esto ocurre pues los datos se pisan cuando otro usuario carga su uuid y su clave. Por otro lado, el mail no se almacena en ningún momento.
+
+\item \textbf{Transmisión insegura:} No se utiliza SSL/TLS. Luego, en vez de correr sobre HTTPS, el servidor corre sobre HTTP, dando la posibilidad de sniffear (ataque pasivo) y modificar (ataque activo) los requests y responses.
+
+\item \textbf{Ataque de red activo:} Se puede alterar el historial y setearlo manualmente a través de un Man in The Middle.
+
+\item \textbf{Ataque de red pasivo:} Sniffear y ver los datos/historial de una persona.
+
+\item \textbf{Datos mal protegidos:} La clave para encriptar es base 64 de lo que está encriptado. 
+
+\item \textbf{Componentes mal exportados:} Se puede leer el historial de un usuario.
+
+\end{itemize}
+
+\section{Prueba de Concepto}
+
+Una posible prueba de concepto para mostrar una vulnerabilidad de tipo local consiste en realizar el siguiente $query$:
+query content://ar.sadosky.browser.historyprovider/history
+
+http://stackoverflow.com/questions/27988069/query-android-content-provider-from-command-line-adb-shell
 
 \end{document}

@@ -1,31 +1,19 @@
 \nonstopmode
 \documentclass[10pt, a4paper]{article}
-%\usepackage{subfig}
-
 \parindent=20pt
 \parskip=8pt
-%\usepackage[width=15.5cm, left=3cm, top=2.5cm, height= 24.5cm]{geometry}
 \usepackage[spanish]{babel}
-\usepackage[utf8]{inputenc}			
-%\usepackage[english]{babel}								% English language/hyphenation
-%\usepackage[protrusion=true,expansion=true]{microtype}		% Better typography
-\usepackage{amsmath,amsfonts,amsthm}					% Math packages
-%\pagenumbering{roman}
+\usepackage[utf8]{inputenc}	
+\usepackage{framed, color}
+\definecolor{shadecolor}{gray}{0.95}
+\usepackage{amsmath,amsfonts,amsthm}				
 \usepackage[pdftex]{graphicx}								% Enable pdflatex
-\usepackage[svgnames]{xcolor}							% Colors by their 'svgnames'
+\usepackage[svgnames]{xcolor}						
 \usepackage{geometry}
-	\textheight=700px									% Saving trees ;-) 
-\usepackage{url}										% Clickable URL's
-\usepackage{wrapfig}									% Wrap text along figures
-%\frenchspacing									% Better looking spacings after periods
-%\pagestyle{empty}								% No pagenumbers/headers/footers
+	\textheight=700px								
+\usepackage{url}									
+\usepackage{wrapfig}								
 \usepackage{bbding}	
-% Acomodo fancyhdr.
-\pagestyle{fancy}
-\thispagestyle{fancy}
-%\addtolength{\headheight}{1pt}
-%\renewcommand{\footrulewidth}{0.4pt}
-%\renewcommand{\thesubsubsection}{\thesubsection.\alph{subsubsection}}
 
 
 \author{Seguridad Android.}
@@ -105,17 +93,24 @@ En primer lugar, decidimos analizar el $Manifest$, archivo en el que se enumeran
 
 Las configuraciones encontradas fueron las siguientes:
 \begin{itemize}
-\item $<permission$ $android:name="ar.sadosky.badbrowser.permission.SyncBrowser"/>$ 
-\item $<permission$ $android:name="ar.sadosky.badbrowser.permission.WRITE"$ $android:protectionLevel="signature"/>$ 
+\item \begin{verbatim}<permission android:name="ar.sadosky.badbrowser.permission.SyncBrowser"/> \end{verbatim} 
+\item \begin{verbatim}<permission
+android:name="ar.sadosky.badbrowser.permission.WRITE"
+android:protectionLevel="signature"/> \end{verbatim}
 
 Estos dos permisos son exportados por la aplicación. El primero permite sincronizar los datos del browser utilizando la cuenta creada. El segundo indica que el nivel de protección es de tipo ``signature'', lo que significa que es sólo accesible a aplicaciones firmadas con el mismo certificado que la que registra el permiso.
 
-\item $application$ $android:allowBackup="true"$
+\item \begin{verbatim} application android:allowBackup="true" \end{verbatim}
 
 Esta configuración presenta una vulnerabilidad de tipo \textit{Almacenamiento inseguro de datos privados} pues se almacena la información sin ningún tipo de encriptación. Esto se considera un problema de seguridad pues una persona podría realizar un backup de la aplicación por medio de $adb$ y obtener datos privados de la misma en sus computadoras.
 
 
-\item $<provider$ $android:authorities="ar.sadosky.browser.history_provider"$ $android:exported="true"$ $android:name="ar.sadosky.badbrowser.HistoryProvider"$ $android:writePermission="ar.sadosky.badbrowser.permission.WRITE"/>$
+\item \begin{verbatim}
+<provider android:authorities="ar.sadosky.browser.history_provider"
+android:exported="true"
+android:name="ar.sadosky.badbrowser.HistoryProvider"
+android:writePermission="ar.sadosky.badbrowser.permission.WRITE"/>
+\end{verbatim}
 
 La configuración anterior le da al provider el permiso de ser exportado públicamente (a través de $exported=`true''$). 
 Dado que no se exhibe ninguna configuración sobre los permisos de tipo lectura, no se impide que las aplicaciones externas puedan leer el historial de los usuarios, presentando una vulnerabilidad de tipo \textit{Almacenamiento inseguro de datos privados}. 
@@ -126,7 +121,18 @@ Consideramos que el resto de las configuraciones están bien adaptadas a los fin
 
 \newpage
 \subsection{Browser Server}
-Luego, procedimos analizando el $browser\_server.py$ con el fin de hallar las posibles fallas presentes en el mismo. Los resultados encontrados fueron los que siguen:
+Luego, procedimos analizando el $browser\_server.py$ con el fin de hallar las posibles fallas presentes en el mismo:
+
+\begin{shaded}
+En primer lugar, para cada $login$ que se realiza en la aplicación, se genera un string de identificación de sesión que se envía codificado luego del login de usuario. Luego, el servidor guarda la $session\_key$ sin encriptar en un conjunto de keys. Dado que no hay ningún tipo de verificación en el código, un atacante podría generar múltiples logins sin que la aplicación presente problemas. Por otro lado, como no se borran ni caducan los datos del conjunto donde se guardan las keys, se podría hacer un DOS llenando la memoria RAM.
+
+Por otra parte, cuando un usuario se registra, podría registrarse múltiples veces dado que no hay ningún tipo de chequeo. Del mismo modo, podría hacer un DOS y llenar la memoria del servidor. Podría ocurrir que un usuario genere miles de registros y hacer crecer el archivo indefinidamente hasta llenar la capacidad.
+
+Luego, cuando la aplicación recibe el email y la $session\_key$ cifrada que se le envió al usuario al momento del login, si se interfiere en el /sync POST, se puede repetir el mensaje con la $session\_key$ cifrada, inclusive y variar o no el parámetro email, pudiendo alterar el contenido ya guardado o crear nuevo proveyendo otro mail. Es posible también realizar un DOS, guardando una cantidad enorme de datos mediante una sucesión de peticiones POST a /sync usando una $session\_key$ capturada.
+\end{shaded}
+
+
+Los problemas encontrados fueron los que siguen:
 
 \begin{itemize}
 
@@ -140,7 +146,7 @@ Este tipo de problemas podría generar el siguiente escenario:
 
 Supongamos que somos víctimas de un ataque de tipo ``Man in the middle''. Dado que la $session\_key$ se encripta con el mismo par (IV, clave) y la información que se transfiere durante la conexión puede repetirse, alcanza con un análisis estadístico criptográfico para conocer la clave secreta de encriptación, para luego, desencriptar el mensaje del usuario.
 
-\item \textbf{Vulnerabilidad Remota:} Hallamos un problema de autenticación al validar la identidad de un sujeto: el sistema mantiene soporte para un único usuario. Cada vez que se registra un usuario nuevo con su mail y clave, los datos del mismo pisan los del usuario anterior en la base de datos dado que no se itera sobre la misma.
+\item \textbf{Vulnerabilidad Remota:} Hallamos un problema de autenticación al validar la identidad de un sujeto: el sistema mantiene soporte para un único usuario. Cada vez que se registra un usuario nuevo con su mail y clave, los datos del mismo pisan los del usuario anterior en la base de datos dado que no se itera sobre la misma. Además, cuando esta persona usa la aplicación, el historial que genera se agrega al del usuario anterior. Esto se debe a que se almacena un único historial para todos los usuarios.
 
 Esta vulnerabilidad permite que cuando un usuario se registra en la aplicación, pueda ver el historial de la última persona logueada.
 
@@ -150,7 +156,7 @@ Por otro lado, la cuenta no se bloquea tras X intentos fallidos, por lo que se p
 
 \item \textbf{Ataque de red activo:} Se puede alterar el historial y setearlo manualmente a través de un Man in The Middle.
 
-\item \textbf{Ataque de red pasivo:} Sniffear y ver los datos/historial de una persona, provocando que si un usuario conoce el mail de otro, puede ingresar a su historial colocando el mail de la víctima y la clave del atacante.
+\item \textbf{Ataque de red pasivo:} Sniffear y ver los datos/historial de una persona, provocando que se pueda ingresar al historial de cualquier ingresando únicamente la clave del atacante.
 
 \item \textbf{Datos mal protegidos:} La clave para encriptar es base 64 de lo que está encriptado. Luego, todos los datos que se envían a través del browser pueden ser desencriptados fácilmente. 
 
@@ -163,9 +169,13 @@ Cuando un usuario guarda un sitio al que ingresa con HTTPS en el historial, el m
 \newpage
 \section{Prueba de Concepto}
 
-Una posible prueba de concepto para mostrar una vulnerabilidad de tipo local consiste en realizar el siguiente $query$:
-query content://ar.sadosky.browser.historyprovider/history
+Una posible prueba de concepto para mostrar una vulnerabilidad de tipo local consiste en realizar un $adb$ $query$ con el fin de obtener el historial del usuario del teléfono:
 
-http://stackoverflow.com/questions/27988069/query-android-content-provider-from-command-line-adb-shell
+Para ello, es menester correr la aplicación y, en una terminal, escribir el siguiente comando:
 
+\begin{verbatim}
+adb shell content query --uri "content://ar.sadosky.browser.history_provider/history"
+\end{verbatim}
+
+Como se puede observar, es muy simple acceder al historial del usuario sin necesidad de ningún tipo de información, exponiendo la vulnerabilidad local de $BadBrowser$.
 \end{document}

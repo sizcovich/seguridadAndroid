@@ -4,34 +4,35 @@
 
 \parindent=20pt
 \parskip=8pt
-\usepackage[width=15.5cm, left=3cm, top=2.5cm, height= 24.5cm]{geometry}
+%\usepackage[width=15.5cm, left=3cm, top=2.5cm, height= 24.5cm]{geometry}
 \usepackage[spanish]{babel}
 \usepackage[utf8]{inputenc}			
 %\usepackage[english]{babel}								% English language/hyphenation
 %\usepackage[protrusion=true,expansion=true]{microtype}		% Better typography
 \usepackage{amsmath,amsfonts,amsthm}					% Math packages
+%\pagenumbering{roman}
 \usepackage[pdftex]{graphicx}								% Enable pdflatex
 \usepackage[svgnames]{xcolor}							% Colors by their 'svgnames'
 \usepackage{geometry}
 	\textheight=700px									% Saving trees ;-) 
 \usepackage{url}										% Clickable URL's
 \usepackage{wrapfig}									% Wrap text along figures
-\frenchspacing									% Better looking spacings after periods
-\pagestyle{empty}								% No pagenumbers/headers/footers
+%\frenchspacing									% Better looking spacings after periods
+%\pagestyle{empty}								% No pagenumbers/headers/footers
 \usepackage{bbding}	
 % Acomodo fancyhdr.
 \pagestyle{fancy}
 \thispagestyle{fancy}
-\addtolength{\headheight}{1pt}
-\renewcommand{\footrulewidth}{0.4pt}
-\renewcommand{\thesubsubsection}{\thesubsection.\alph{subsubsection}}
+%\addtolength{\headheight}{1pt}
+%\renewcommand{\footrulewidth}{0.4pt}
+%\renewcommand{\thesubsubsection}{\thesubsection.\alph{subsubsection}}
 
 
 \author{Seguridad Android.}
 \date{}								% Symbols
 \begin{document}
 
-\thispagestyle{caratula}
+\thispagestyle{empty}
 
 \begin{center}
 
@@ -56,7 +57,7 @@ Trabajo Práctico Final
 
 Febrero de 2015
 
-\vspace{10cm}
+\vspace{8cm}
 
 
 \vspace{1cm}
@@ -72,6 +73,8 @@ Vita, Sebastián       & UBA & sebastian\_vita@yahoo.com.ar\\
 
 \end{center}
 
+\newpage
+\tableofcontents
 \newpage
 
 \section{Introducción}
@@ -127,15 +130,15 @@ Luego, procedimos analizando el $browser\_server.py$ con el fin de hallar las po
 
 \begin{itemize}
 
-\item \textbf{Vulnerabilidad Remota:} Al observar los \texbf{def encrypt(self,value)} y \texbf{def decrypt(self,value)}, notamos que la clave secreta del cipher simétrico se encuentra hardcodeada cuando se crea el vector de inicialización en vez de ser random.
-
-Dado que el cipher se encuentra en modo CBC, la reutilización de un IV puede facilitar información sobre el primer bloque de texto plano, el largo y cualquier prefijo compartido entre dos mensajes.\footnote{http://crypto.stackexchange.com/a/2579}
+\item \textbf{Vulnerabilidad Remota:} Al observar los \texbf{def encrypt(self,value)} y \texbf{def decrypt(self,value)}, notamos que la clave secreta del cipher simétrico se encuentra hardcodeada. Usualmente, las mismas se generan de forma $random$ a través de alguna función provista por el lenguaje. 
+Por otro lado, dado que el cipher se encuentra en modo CBC, la reutilización de un IV puede facilitar información sobre el primer bloque de texto plano, el largo y cualquier prefijo compartido entre dos mensajes.
+Esto se debe a que si no se cambia el IV en cada sesión, los datos están mayormente sujetos a ataques como podría ser el análisis estático criptográfico, capaz de develar la clave. 
 
 De este modo, hallamos que el diseño de proceso de encriptación es débil.
 
 Este tipo de problemas podría generar el siguiente escenario:
 
-Supongamos que somos víctimas de un ataque de tipo ``Man in the middle'' y escribimos nuestra clave para registrarnos en la aplicación. Por la vulnerabilidad mencionada, el atacante conoce la clave secreta de encriptación y la clave encriptada, luego, puede desencriptar la clave del usuario.
+Supongamos que somos víctimas de un ataque de tipo ``Man in the middle''. Dado que la $session\_key$ se encripta con el mismo par (IV, clave) y la información que se transfiere durante la conexión puede repetirse, alcanza con un análisis estadístico criptográfico para conocer la clave secreta de encriptación, para luego, desencriptar el mensaje del usuario.
 
 \item \textbf{Vulnerabilidad Remota:} Hallamos un problema de autenticación al validar la identidad de un sujeto: el sistema mantiene soporte para un único usuario. Cada vez que se registra un usuario nuevo con su mail y clave, los datos del mismo pisan los del usuario anterior en la base de datos dado que no se itera sobre la misma.
 
@@ -143,7 +146,7 @@ Esta vulnerabilidad permite que cuando un usuario se registra en la aplicación,
 
 Por otro lado, la cuenta no se bloquea tras X intentos fallidos, por lo que se podrían intentar distintas claves indefinidamente. Además, el mail de los usuarios no se almacena en ningún momento. 
 
-\item \textbf{Transmisión insegura:} No se utiliza SSL/TLS: en vez de correr sobre HTTPS, el servidor corre sobre HTTP. Esto último da la posibilidad de sniffear (ataque pasivo) y modificar (ataque activo) los requests y responses.
+\item \textbf{Transmisión insegura:} No se utiliza SSL ni TLS como protocolos criptográficos para proporcionar comunicaciones seguras por la red. Esto se puede ver dado que en vez de correr sobre HTTPS, el servidor corre sobre HTTP, dando la posibilidad de sniffear (\textbf{ataque pasivo}) y modificar (\textb{fataque activo}) los requests y responses.
 
 \item \textbf{Ataque de red activo:} Se puede alterar el historial y setearlo manualmente a través de un Man in The Middle.
 
@@ -157,6 +160,7 @@ Cuando un usuario guarda un sitio al que ingresa con HTTPS en el historial, el m
 
 \end{itemize}
 
+\newpage
 \section{Prueba de Concepto}
 
 Una posible prueba de concepto para mostrar una vulnerabilidad de tipo local consiste en realizar el siguiente $query$:

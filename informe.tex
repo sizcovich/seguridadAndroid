@@ -63,10 +63,10 @@ Febrero de 2015
 
 \begin{tabular}{|c|c|c|}
 \hline
-Apellido y Nombre & E-mail\\
+Apellido y Nombre & Universidad & E-mail\\
 \hline
-Izcovich, Sabrina      & sizcovich@gmail.com\\
-Vita, Sebastián        & sebastian\_vita@yahoo.com.ar\\
+Izcovich, Sabrina     & UBA & sizcovich@gmail.com\\
+Vita, Sebastián       & UBA & sebastian\_vita@yahoo.com.ar\\
 \hline
 \end{tabular}
 
@@ -77,56 +77,91 @@ Vita, Sebastián        & sebastian\_vita@yahoo.com.ar\\
 \section{Introducción}
 En el siguiente trabajo práctico, debimos analizar la aplicación Android $BadBrowser$ con el fin de hallar sus vulnerabilidades. La misma se trata de un navegador que permite sincronizar el historial de un usuario registrado con un servidor externo. Dicha aplicación contiene vulnerabilidades del tipo de las vistas en el curso, que pueden ser:
 \begin{itemize}
-\item \textit{Controles pobres en el servidor.}
-\item \textit{Almacenamiento inseguro de datos privados.}
-\item \textit{Transmisión insegura.}
-\item \textit{Autenticación/autorización pobre.}
-\item \textit{Caching y Logging: Fuga de datos.}
-\item \textit{Mal uso de criptografía.}
-\item \textit{Inyección de código en el cliente.}
-\item \textit{Componentes exportados: Inputs maliciosos.}
-\item \textit{Componentes exportados: Intents implícitos.}
-\item \textit{Manejo inapropiado de sesiones.}
-\item \textit{Protección del APK.}
+\item \textbf{LOCALES}
+\begin{itemize}
+\item \textbf{DATOS MAL PROTEGIDOS}
+\item \textbf{COMPONENTES MAL EXPORTADOS}
+\end{itemize}
+\item \textbf{DE RED}
+\begin{itemize}
+\item \textbf{ACTIVAS}
+\item \textbf{PASIVAS}
+\end{itemize}
+\item \textbf{REMOTAS}
 \end{itemize}
 
-Con el fin de hallarlas, debimos realizar un análisis estático y uno dinámico de la aplicación, por lo que debimos decompilarla para acceder a su código fuente. Para una correcta experimentación, se nos proveyó de los fuentes del servidor externo para que pudiera ser corrido utilizando python.
+Con el fin de hallarlas, debimos realizar un análisis dinámico y uno estático de la aplicación. Para esto último, fue necesario descargar la última actualización de $android-apktool$\footnote{https://code.google.com/p/android-apktool/} (v2.0.0RC4) dentro de la máquina virtual provista por la cátedra como también decompilar la aplicación para acceder a su código fuente.
+Para una correcta experimentación, se nos proveyó de los fuentes del servidor externo para que pudiera ser corrido utilizando python.
 
 \newpage
 \section{Análisis}
 
 \subsection{Manifest}
 
-En primer lugar, decidimos analizar los permisos declarados en el $Manifest$. Para ello, descargamos la última actualización de $android-apktool$\footnote{https://code.google.com/p/android-apktool/} (v2.0.0RC4) dentro de la máquina virtual provista por la cátedra.
+En primer lugar, decidimos analizar el $Manifest$, archivo en el que se enumeran las actividades, los servicios, los receptores, los proveedores de contenidos y los permisos requeridos por la aplicación. 
 
-En el análisis, nos encontramos con los siguientes detalles:
+Las configuraciones encontradas fueron las siguientes:
 \begin{itemize}
-\item $<permission android:name="ar.sadosky.badbrowser.permission.SyncBrowser"/>$ indica que el $SyncBrowser$ es público.
-\item $<permission android:name="ar.sadosky.badbrowser.permission.WRITE" android:protectionLevel="signature"/>$ indica que el nivel de protección es de tipo ``signature'', luego, que utiliza el mismo que para las aplicaciones de la misma firma. **chequear esto
-\item $<uses-permission android:name="android.permission.READ\_PHONE\_STATE"/>$ es un permiso correcto para el uso que se le quiere dar a la aplicación mobile.
-\item $<data android:scheme="javascript"/>$ nos llamó la atención dado que implica que cualquier link con javascript puede ser ejecutado, hecho que no debería ocurrir.
+\item $<permission$ $android:name="ar.sadosky.badbrowser.permission.SyncBrowser"/>$ 
+\item $<permission$ $android:name="ar.sadosky.badbrowser.permission.WRITE"$ $android:protectionLevel="signature"/>$ 
+
+Estos dos permisos son exportados por la aplicación. El primero permite sincronizar los datos del browser utilizando la cuenta creada. El segundo indica que el nivel de protección es de tipo ``signature'', lo que significa que es sólo accesible a aplicaciones firmadas con el mismo certificado que la que registra el permiso.
+
+\item $application$ $android:allowBackup="true"$
+
+Esta configuración presenta una vulnerabilidad de tipo \textit{Almacenamiento inseguro de datos privados} pues se almacena la información sin ningún tipo de encriptación. Esto se considera un problema de seguridad pues una persona podría realizar un backup de la aplicación por medio de $adb$ y obtener datos privados de la misma en sus computadoras.
+
+
+\item $<provider$ $android:authorities="ar.sadosky.browser.history_provider"$ $android:exported="true"$ $android:name="ar.sadosky.badbrowser.HistoryProvider"$ $android:writePermission="ar.sadosky.badbrowser.permission.WRITE"/>$
+
+La configuración anterior le da al provider el permiso de ser exportado públicamente (a través de $exported=`true''$). 
+Dado que no se exhibe ninguna configuración sobre los permisos de tipo lectura, no se impide que las aplicaciones externas puedan leer el historial de los usuarios, presentando una vulnerabilidad de tipo \textit{Almacenamiento inseguro de datos privados}. 
+
 \end{itemize}
 
-Consideramos que el resto de las configuraciones están bien adaptadas a los fines de la aplicación y no presentan relevancia alguna, por lo que decidimos no mencionarlas detalladamente.
+Consideramos que el resto de las configuraciones están bien adaptadas a los fines de la aplicación y no presentan relevancia, por lo que decidimos no mencionarlas.
 
+\newpage
 \subsection{Browser Server}
-Luego, procedimos analizando el $browser_server.py$. Las fallas encontradas fueron las siguientes:
+Luego, procedimos analizando el $browser\_server.py$ con el fin de hallar las posibles fallas presentes en el mismo. Los resultados encontrados fueron los que siguen:
 
 \begin{itemize}
 
-\item \textbf{Vulnerabilidad Remota:} Al observar \texit{def encrypt(self,value)} y \texit{def decrypt(self,value)}, podemos determinar que hay una vulnerabilidad de cipher de tipo `CBC mode'' cuando se inicializa $AES$ pues los vectores de inicialización están hardcodeados (string de 0's) en vez de ser random. Luego, cualquiera puede desencriptar y encriptar.\footnote{http://crypto.stackexchange.com/a/2579}
+\item \textbf{Vulnerabilidad Remota:} Al observar los \texbf{def encrypt(self,value)} y \texbf{def decrypt(self,value)}, notamos que la clave secreta del cipher simétrico se encuentra hardcodeada cuando se crea el vector de inicialización en vez de ser random.
 
-\item \textbf{Vulnerabilidad Remota:} El sistema mantiene soporte para un único usuario en la base de datos. Esto ocurre pues los datos se pisan cuando otro usuario carga su uuid y su clave. Por otro lado, el mail no se almacena en ningún momento.
+Dado que el cipher se encuentra en modo CBC, la reutilización de un IV puede facilitar información sobre el primer bloque de texto plano, el largo y cualquier prefijo compartido entre dos mensajes.\footnote{http://crypto.stackexchange.com/a/2579}
 
-\item \textbf{Transmisión insegura:} No se utiliza SSL/TLS. Luego, en vez de correr sobre HTTPS, el servidor corre sobre HTTP, dando la posibilidad de sniffear (ataque pasivo) y modificar (ataque activo) los requests y responses.
+De este modo, hallamos que el diseño de proceso de encriptación es débil.
+
+Este tipo de problemas podría generar el siguiente escenario:
+
+Supongamos que somos víctimas de un ataque de tipo ``Man in the middle'' y escribimos nuestra clave para registrarnos en la aplicación. Por la vulnerabilidad mencionada, el atacante conoce la clave secreta de encriptación y la clave encriptada, luego, puede desencriptar la clave del usuario.
+
+\item \textbf{Vulnerabilidad Remota:} Hallamos un problema de autenticación al validar la identidad de un sujeto: el sistema mantiene soporte para un único usuario. Cada vez que se registra un usuario nuevo con su mail y clave, los datos del mismo pisan los del usuario anterior en la base de datos dado que no se itera sobre la misma.
+
+Esta vulnerabilidad permite que cuando un usuario se registra en la aplicación, pueda ver el historial de la última persona logueada.
+
+Por otro lado, la cuenta no se bloquea tras X intentos fallidos, por lo que se podrían intentar distintas claves indefinidamente. Además, el mail de los usuarios no se almacena en ningún momento. 
+
+
+
+NO SE EN QUE CATEGORÍA ENTRA ESTO!!!!!
+
+En el $Manifest$ se declara un provider el cual le brinda permisos de escritura al historial. Esto es una vulnerabilidad dado que la versión de la API que usa la aplicación, tiene por defecto que si un permiso no se especifica, este es público por defecto. Con lo cual, al solo hacer referencia a la escritura, cualquier aplicación externa puede leer el historial.
+
+
+
+\item \textbf{Transmisión insegura:} No se utiliza SSL/TLS: en vez de correr sobre HTTPS, el servidor corre sobre HTTP. Esto último da la posibilidad de sniffear (ataque pasivo) y modificar (ataque activo) los requests y responses.
 
 \item \textbf{Ataque de red activo:} Se puede alterar el historial y setearlo manualmente a través de un Man in The Middle.
 
-\item \textbf{Ataque de red pasivo:} Sniffear y ver los datos/historial de una persona.
+\item \textbf{Ataque de red pasivo:} Sniffear y ver los datos/historial de una persona, provocando que si un usuario conoce el mail de otro, puede ingresar a su historial colocando el mail de la víctima y la clave del atacante.
 
-\item \textbf{Datos mal protegidos:} La clave para encriptar es base 64 de lo que está encriptado. 
+\item \textbf{Datos mal protegidos:} La clave para encriptar es base 64 de lo que está encriptado. Luego, todos los datos que se envían a través del browser pueden ser desencriptados fácilmente. 
 
-\item \textbf{Componentes mal exportados:} Se puede leer el historial de un usuario.
+\item \textbf{Componentes mal exportados:} Se puede leer el historial de un usuario dado que no se almacena con HTTPS sino que con HTTP.
+
+Cuando un usuario guarda un sitio al que ingresa con HTTPS en el historial, el mismo se guarda con HTTP entonces cuando vuelve a ingresar entra con HTTP. Ver MainActivity.class
 
 \end{itemize}
 

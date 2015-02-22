@@ -143,14 +143,6 @@ Esta vulnerabilidad permite que cuando un usuario se registra en la aplicación,
 
 Por otro lado, la cuenta no se bloquea tras X intentos fallidos, por lo que se podrían intentar distintas claves indefinidamente. Además, el mail de los usuarios no se almacena en ningún momento. 
 
-
-
-NO SE EN QUE CATEGORÍA ENTRA ESTO!!!!!
-
-En el $Manifest$ se declara un provider el cual le brinda permisos de escritura al historial. Esto es una vulnerabilidad dado que la versión de la API que usa la aplicación, tiene por defecto que si un permiso no se especifica, este es público por defecto. Con lo cual, al solo hacer referencia a la escritura, cualquier aplicación externa puede leer el historial.
-
-
-
 \item \textbf{Transmisión insegura:} No se utiliza SSL/TLS: en vez de correr sobre HTTPS, el servidor corre sobre HTTP. Esto último da la posibilidad de sniffear (ataque pasivo) y modificar (ataque activo) los requests y responses.
 
 \item \textbf{Ataque de red activo:} Se puede alterar el historial y setearlo manualmente a través de un Man in The Middle.

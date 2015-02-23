@@ -82,7 +82,7 @@ En el siguiente trabajo práctico, debimos analizar la aplicación Android $BadB
 \item \textbf{REMOTAS}
 \end{itemize}
 
-Con el fin de hallarlas, debimos realizar un análisis dinámico y uno estático de la aplicación. Para esto último, fue necesario descargar la última actualización de $android-apktool$\footnote{https://code.google.com/p/android-apktool/} (v2.0.0RC4) dentro de la máquina virtual provista por la cátedra como también decompilar la aplicación para acceder a su código fuente.
+Con el fin de hallarlas, debimos realizar un análisis dinámico y otro estático de la aplicación. Para esto último, fue necesario descargar la última actualización de $android-apktool$\footnote{https://code.google.com/p/android-apktool/} (v2.0.0RC4) dentro de la máquina virtual provista por la cátedra como también decompilar la aplicación para acceder a su código fuente.
 Para una correcta experimentación, se nos proveyó de los fuentes del servidor externo para que pudiera ser corrido utilizando python.
 
 \newpage
@@ -123,14 +123,29 @@ Consideramos que el resto de las configuraciones están bien adaptadas a los fin
 \newpage
 \subsection{Browser Server}
 Luego, procedimos analizando el $browser\_server.py$ con el fin de hallar las posibles fallas presentes en el mismo:
+En primer lugar, para cada $login$ que se realiza en la aplicación, se genera y guarda en un conjunto una string de identificación de sesión ($session\_key$) que se envía codificada al usuario utilizando AES como algoritmo de encriptación. Dado que no hay ningún tipo de mecanisimo en el código para caducar o borrar las sesiones activas, un atacante podría generar múltiples logins de forma masiva sin que la aplicación rechaze los pedidos, pudiento realizar un DOS llenando la memoria RAM del servidor.
 
+Por otra parte, al registrarse, el servidor guarda el $uuid$ y la $password$ del usuario sin ninguna medida de seguridad o verificación de operaciones de registros masivos por parte de usuarios, ni sobre la posibilidad de realizar registros utilizando el mismo $uuid$.
+
+A continuación, se plantean los siguientes ataques:
 \begin{shaded}
-En primer lugar, para cada $login$ que se realiza en la aplicación, se genera un string de identificación de sesión que se envía codificado luego del login de usuario. Luego, el servidor guarda la $session\_key$ sin encriptar en un conjunto de keys. Dado que no hay ningún tipo de verificación en el código, un atacante podría generar múltiples logins sin que la aplicación presente problemas. Por otro lado, como no se borran ni caducan los datos del conjunto donde se guardan las keys, se podría hacer un DOS llenando la memoria RAM.
-
-Por otra parte, cuando un usuario se registra, podría registrarse múltiples veces dado que no hay ningún tipo de chequeo. Del mismo modo, podría hacer un DOS y llenar la memoria del servidor. Podría ocurrir que un usuario genere miles de registros y hacer crecer el archivo indefinidamente hasta llenar la capacidad.
-
-Luego, cuando la aplicación recibe el email y la $session\_key$ cifrada que se le envió al usuario al momento del login, si se interfiere en el /sync POST, se puede repetir el mensaje con la $session\_key$ cifrada, inclusive y variar o no el parámetro email, pudiendo alterar el contenido ya guardado o crear nuevo proveyendo otro mail. Es posible también realizar un DOS, guardando una cantidad enorme de datos mediante una sucesión de peticiones POST a /sync usando una $session\_key$ capturada.
+\begin{itemize}
+\item Un atacante podría realizar un DOS llenando la memoria del servidor al forzar a guardarse registros de forma masiva, de los cuales, tampoco verifica el largo de los campos ingresados, siendo fácil su ejecución.
+\item Un atacante podría sobrescribir el registro de otro usuario, utilizando su mismo $uuid$, pudiendo cambiar su contraseña.
+\end{itemize}
 \end{shaded}
+
+Otra vulnerabilidad ocurre al realizar peticiones a $/sync$ POST y GET. Tanto para el $/sync$ POST como para el GET, solo se verifica que la $session\_key$ exista en el conjunto de keys activas que el servidor posee. Este error expone a un atacante la posibilidad de poder subir, utilizando POST, o leer, utilizando GET, el contenido de cualquier otro usuario solo con utilizar una $session\_key$ que se haya utilizado anteriormente, que como vimos antes, nunca caducan.
+
+Se pueden plantear los siguentes ataques:
+\begin{shaded}
+\begin{itemize}
+\item Un atacante podría utilizar su $session\_key$ o capturar un mensaje a $/sync$ y reutilizarlo, cambiando el campo $email$ que identifica al dueño del contenido a leer o subir, pudiendo leer el contenido guardado por cualquier usuario, o cambiando el campo referido al contenido de lo que será guardado, sobrescribir el contenido guardado por otro usuario.
+\item Un atacante puede utilizar una $session\_key$ válida de las maneras nombradas anteriormente y realizar una peticion GET a $/sync$ donde el campo mail sea conocido por el atacante, pudiendo obtener el contenido de su historial sincronizado.
+\item Al no tener ningún tipo de verificación al subir el contenido, podría realizarse un DOS enviando mensajes POST de forma masiva a $/sync$ con alguna $session\_key$ válida, mails frescos como campo para guardar nuevo contenido y contenido pesado para terminar con el agotamiento de la memoria del servidor.
+\end{itemize}
+\end{shaded}
+
 
 
 Los problemas encontrados fueron los que siguen:
@@ -153,9 +168,9 @@ Esta vulnerabilidad permite que cuando un usuario se registra en la aplicación,
 
 Por otro lado, la cuenta no se bloquea tras X intentos fallidos, por lo que se podrían intentar distintas claves indefinidamente. Además, el mail de los usuarios no se almacena en ningún momento. 
 
-\item \textbf{Componentes mal exportados:} No se utiliza SSL ni TLS como protocolos criptográficos para proporcionar comunicaciones seguras por la red, generando una transmisión insegura de los datos. Esto se puede ver dado que en vez de correr sobre HTTPS, el servidor corre sobre HTTP, dando la posibilidad de sniffear (\textbf{ataque pasivo}) y modificar (\textbf{ataque activo}) los requests y responses. De este modo, es posible leer el historial de un usuario dado el mismo no se almacena con HTTPS sino que con HTTP. 
+\item \textbf{Componentes mal exportados:} No se utiliza SSL ni TLS como protocolos criptográficos para proporcionar comunicaciones seguras por la red, generando una transmisión insegura de los datos. Esto se debe a que en vez de correr sobre HTTPS, el servidor corre sobre HTTP, dando la posibilidad de sniffear (\textbf{ataque pasivo}) y/o modificar (\textbf{ataque activo}).
 
-\item \textbf{Ataque de red activo:} Se puede alterar el historial y setearlo manualmente a través de un Man in The Middle. Esto se debe a que con un simple $query$ de $adb$ es posible obtener el historial almacenado en el celular del usuario.
+\item \textbf{Ataque de red activo:} Se puede alterar el historial enviado en una petición POST a $/sync$ a través de un ataque man in the middle Man in The Middle. Esto se debe a que con un simple $query$ de $adb$ es posible obtener el historial almacenado en el celular del usuario.
 
 \item \textbf{Ataque de red pasivo:} Existe la posibilidad de sniffear y ver los datos/historial de una persona dado que toda la información se envía mediante el protocolo HTTP. Para esto, basta con utilizar un analizador de red, como ser $Scapy$, y capturar toda la información que se dirige al servidor.
 
@@ -184,10 +199,13 @@ Como se puede observar, es muy simple acceder al historial del usuario sin neces
 
 A partir de un exhaustivo análisis dinámico y estático de la aplicación $BadBrowser$, encontramos distintos problemas de seguridad. Entre ellos, se pueden ver algunos de tipo transmisión insegura, almacenamiento inseguro de datos privados, autenticación/autorización pobres y mal uso de criptografía. 
 
-Entre las vulnerabilidades descubiertas, notamos que la aplicación se comunica con servidores externos utilizando un protocolo inseguro y los atacantes podrían obtener:
- - información privada por los protocolos sin encriptación.
- - información encriptada pero utilizando claves hardcodeadas (problema presente en la primer vulnerabilidad mencionada).
- 
- Luego, a través de un ataque de tipo \textit{Man in The Middle} es posible interceptar cualquier dato de la aplicación.
+Entre las vulnerabilidades descubiertas, notamos que la aplicación se comunica con servidores externos utilizando un protocolo inseguro y exporta servicios de manera incorrecta, pudiento los atacantes:
+\begin{itemize}
+\item Interferir y recolectar información privada por los protocolos sin encriptación.
+\item Alterar y/o conseguir el historial privado de los usuarios de forma remota sin una dificultad aparente de forma remota.
+\item Conseguir el historial de los usuarios de forma local utilizando ADB o alguna aplicación, mediante el content provider mal exportado.
+\end{itemize}
+
+Concluimos además, que el cifrado utilizado para la $session_key$ puede ser vulnerado debido a que la utilización de un único IV puede permitir ataques estadísticos criptográficos que podrían resultar en la obtención de la clave secreta del cifrado.
 
 \end{document}

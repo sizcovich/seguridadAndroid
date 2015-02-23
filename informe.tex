@@ -14,7 +14,8 @@
 \usepackage{url}									
 \usepackage{wrapfig}								
 \usepackage{bbding}	
-
+\textheight = 650pt
+\footskip = 30pt
 
 \author{Seguridad Android.}
 \date{}								% Symbols
@@ -146,23 +147,22 @@ Este tipo de problemas podría generar el siguiente escenario:
 
 Supongamos que somos víctimas de un ataque de tipo ``Man in the middle''. Dado que la $session\_key$ se encripta con el mismo par (IV, clave) y la información que se transfiere durante la conexión puede repetirse, alcanza con un análisis estadístico criptográfico para conocer la clave secreta de encriptación, para luego, desencriptar el mensaje del usuario.
 
-\item \textbf{Vulnerabilidad Remota:} Hallamos un problema de autenticación al validar la identidad de un sujeto: el sistema mantiene soporte para un único usuario. Cada vez que se registra un usuario nuevo con su mail y clave, los datos del mismo pisan los del usuario anterior en la base de datos dado que no se itera sobre la misma. Además, cuando esta persona usa la aplicación, el historial que genera se agrega al del usuario anterior. Esto se debe a que se almacena un único historial para todos los usuarios.
+\item \textbf{Vulnerabilidad Remota:} Descubrimos un problema de autenticación al validar la identidad de un sujeto: el sistema mantiene soporte para un único usuario. Cada vez que se registra un usuario nuevo con su mail y clave, los datos del mismo pisan los del usuario anterior en la base de datos dado que no se itera sobre la misma. Además, cuando esta persona usa la aplicación, el historial que genera se agrega al del usuario anterior. Esto se debe a que se almacena un único historial para todos los usuarios.
 
 Esta vulnerabilidad permite que cuando un usuario se registra en la aplicación, pueda ver el historial de la última persona logueada.
 
 Por otro lado, la cuenta no se bloquea tras X intentos fallidos, por lo que se podrían intentar distintas claves indefinidamente. Además, el mail de los usuarios no se almacena en ningún momento. 
 
-\item \textbf{Transmisión insegura:} No se utiliza SSL ni TLS como protocolos criptográficos para proporcionar comunicaciones seguras por la red. Esto se puede ver dado que en vez de correr sobre HTTPS, el servidor corre sobre HTTP, dando la posibilidad de sniffear (\textbf{ataque pasivo}) y modificar (\textb{fataque activo}) los requests y responses.
+\item \textbf{Componentes mal exportados:} No se utiliza SSL ni TLS como protocolos criptográficos para proporcionar comunicaciones seguras por la red, generando una transmisión insegura de los datos. Esto se puede ver dado que en vez de correr sobre HTTPS, el servidor corre sobre HTTP, dando la posibilidad de sniffear (\textbf{ataque pasivo}) y modificar (\textbf{ataque activo}) los requests y responses. De este modo, es posible leer el historial de un usuario dado el mismo no se almacena con HTTPS sino que con HTTP. 
 
-\item \textbf{Ataque de red activo:} Se puede alterar el historial y setearlo manualmente a través de un Man in The Middle.
+\item \textbf{Ataque de red activo:} Se puede alterar el historial y setearlo manualmente a través de un Man in The Middle. Esto se debe a que con un simple $query$ de $adb$ es posible obtener el historial almacenado en el celular del usuario.
 
-\item \textbf{Ataque de red pasivo:} Sniffear y ver los datos/historial de una persona, provocando que se pueda ingresar al historial de cualquier ingresando únicamente la clave del atacante.
+\item \textbf{Ataque de red pasivo:} Existe la posibilidad de sniffear y ver los datos/historial de una persona dado que toda la información se envía mediante el protocolo HTTP. Para esto, basta con utilizar un analizador de red, como ser $Scapy$, y capturar toda la información que se dirige al servidor.
 
-\item \textbf{Datos mal protegidos:} La clave para encriptar es base 64 de lo que está encriptado. Luego, todos los datos que se envían a través del browser pueden ser desencriptados fácilmente. 
+\item \textbf{Datos mal protegidos:} La información se envía encriptada con una clave que se encuentra hardcodeada en el código, luego se la encripta con base 64. Con lo cual, todos los datos que se envían a través del browser pueden ser desencriptados fácilmente. Por otro lado, el historial de todos los usuarios se almacena en el mismo lugar, con lo cual cualquier usuario podría leer el historial de los demás.
 
-\item \textbf{Componentes mal exportados:} Se puede leer el historial de un usuario dado que no se almacena con HTTPS sino que con HTTP.
+Cuando un usuario guarda un sitio al que ingresa con HTTPS en el historial, el mismo se guarda con HTTP entonces cuando vuelve a ingresar entra con HTTP.
 
-Cuando un usuario guarda un sitio al que ingresa con HTTPS en el historial, el mismo se guarda con HTTP entonces cuando vuelve a ingresar entra con HTTP. Ver MainActivity.class
 
 \end{itemize}
 
@@ -178,4 +178,16 @@ adb shell content query --uri "content://ar.sadosky.browser.history_provider/his
 \end{verbatim}
 
 Como se puede observar, es muy simple acceder al historial del usuario sin necesidad de ningún tipo de información, exponiendo la vulnerabilidad local de $BadBrowser$.
+
+\newpage
+\section{Conclusión}
+
+A partir de un exhaustivo análisis dinámico y estático de la aplicación $BadBrowser$, encontramos distintos problemas de seguridad. Entre ellos, se pueden ver algunos de tipo transmisión insegura, almacenamiento inseguro de datos privados, autenticación/autorización pobres y mal uso de criptografía. 
+
+Entre las vulnerabilidades descubiertas, notamos que la aplicación se comunica con servidores externos utilizando un protocolo inseguro y los atacantes podrían obtener:
+ - información privada por los protocolos sin encriptación.
+ - información encriptada pero utilizando claves hardcodeadas (problema presente en la primer vulnerabilidad mencionada).
+ 
+ Luego, a través de un ataque de tipo \textit{Man in The Middle} es posible interceptar cualquier dato de la aplicación.
+
 \end{document}
